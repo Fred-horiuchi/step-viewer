@@ -23,7 +23,7 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
   const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 1e6);
   camera.position.set(100, 100, 100);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });  // r163+ は既定で stencil 無効
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(wrap.clientWidth, wrap.clientHeight);
   renderer.localClippingEnabled = true;   // 断面表示に必要
@@ -41,6 +41,8 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
 
   let modelGroup = null;
   let edgeGroup = null;
+  let stencilGroup = null;   // 断面キャップ用ステンシル書き込みオブジェクト
+  let capMesh = null;        // 断面キャップ（切断面の塗りつぶし）
   let showWire = false;
   let showEdges = true;
   let bbox = null;
@@ -48,8 +50,51 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
   const sectionState = { enabled: false, axis: 0, flip: false, t: 0.5 };
   const clipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
 
+  // 断面キャップ: ジオメトリの裏面/表面をステンシルに増減記録し、内部(=非ゼロ)だけを塗る
+  function createPlaneStencilGroup(geometry, plane, renderOrder) {
+    const group = new THREE.Group();
+    const baseMat = new THREE.MeshBasicMaterial();
+    baseMat.depthWrite = false;
+    baseMat.depthTest = false;
+    baseMat.colorWrite = false;
+    baseMat.stencilWrite = true;
+    baseMat.stencilFunc = THREE.AlwaysStencilFunc;
+
+    const mat0 = baseMat.clone();
+    mat0.side = THREE.BackSide;
+    mat0.clippingPlanes = [plane];
+    mat0.stencilFail = THREE.IncrementWrapStencilOp;
+    mat0.stencilZFail = THREE.IncrementWrapStencilOp;
+    mat0.stencilZPass = THREE.IncrementWrapStencilOp;
+    const mesh0 = new THREE.Mesh(geometry, mat0);
+    mesh0.renderOrder = renderOrder;
+    group.add(mesh0);
+
+    const mat1 = baseMat.clone();
+    mat1.side = THREE.FrontSide;
+    mat1.clippingPlanes = [plane];
+    mat1.stencilFail = THREE.DecrementWrapStencilOp;
+    mat1.stencilZFail = THREE.DecrementWrapStencilOp;
+    mat1.stencilZPass = THREE.DecrementWrapStencilOp;
+    const mesh1 = new THREE.Mesh(geometry, mat1);
+    mesh1.renderOrder = renderOrder;
+    group.add(mesh1);
+
+    return group;
+  }
+
+  function updateCap() {
+    if (!capMesh || !sectionState.enabled) return;
+    clipPlane.coplanarPoint(capMesh.position);
+    capMesh.lookAt(
+      capMesh.position.x - clipPlane.normal.x,
+      capMesh.position.y - clipPlane.normal.y,
+      capMesh.position.z - clipPlane.normal.z
+    );
+  }
+
   function render() { renderer.render(scene, camera); }
-  function animate() { requestAnimationFrame(animate); controls.update(); render(); }
+  function animate() { requestAnimationFrame(animate); controls.update(); updateCap(); render(); }
   animate();
 
   window.addEventListener('resize', () => {
@@ -71,8 +116,11 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
 
       if (modelGroup) { scene.remove(modelGroup); disposeGroup(modelGroup); }
       if (edgeGroup) { scene.remove(edgeGroup); disposeGroup(edgeGroup); }
+      if (stencilGroup) { scene.remove(stencilGroup); disposeGroup(stencilGroup); }
+      if (capMesh) { scene.remove(capMesh); capMesh.geometry.dispose(); capMesh.material.dispose(); capMesh = null; }
       modelGroup = new THREE.Group();
       edgeGroup = new THREE.Group();
+      stencilGroup = new THREE.Group();
 
       let triCount = 0;
       for (const mesh of result.meshes) {
@@ -101,6 +149,24 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
       scene.add(edgeGroup);
       edgeGroup.visible = showEdges;
       bbox = new THREE.Box3().setFromObject(modelGroup);
+
+      // 断面キャップ: 各ソリッドのステンシル書き込み群 + 切断面を塗るキャップ平面
+      let ro = 1;
+      modelGroup.traverse(o => { if (o.isMesh) { stencilGroup.add(createPlaneStencilGroup(o.geometry, clipPlane, ro++)); } });
+      scene.add(stencilGroup);
+
+      const sphere = bbox.getBoundingSphere(new THREE.Sphere());
+      const capSize = sphere.radius * 2.5;
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0x7d8893, metalness: 0.1, roughness: 0.8, side: THREE.DoubleSide,
+        stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc,
+        stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp,
+      });
+      capMesh = new THREE.Mesh(new THREE.PlaneGeometry(capSize, capSize), capMat);
+      capMesh.renderOrder = 10;
+      capMesh.onAfterRender = (r) => r.clearStencil();
+      scene.add(capMesh);
+
       applyWire();
       applySection();
 
@@ -161,6 +227,9 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
     }
     modelGroup.traverse(o => { if (o.isMesh) o.material.clippingPlanes = planes; });
     if (edgeGroup) edgeGroup.traverse(o => { if (o.isLineSegments) o.material.clippingPlanes = planes; });
+    if (stencilGroup) stencilGroup.visible = sectionState.enabled;
+    if (capMesh) capMesh.visible = sectionState.enabled;
+    updateCap();
   }
 
   // --- ファイル受け取り ---
