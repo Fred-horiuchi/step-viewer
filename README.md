@@ -24,7 +24,8 @@ python -m http.server 8753
 # → http://localhost:8753/index.html
 ```
 
-## 機能（v0.4）
+## 機能（v0.5）
+- **対応形式：STEP（.step/.stp）・IGES（.iges/.igs）・STL（.stl）**　※STEP/IGESはOpenCASCADE、STLはthree.js STLLoader
 - ドラッグ&ドロップ / ファイル選択での読み込み（スマホはタップで選択）
 - 回転・パン・ズーム（**慣性なし**）、フィット
 - **断面表示**（X/Y/Z軸・位置スライダー・向き反転／**断面キャップで切断面を中実に塗りつぶし**）
@@ -33,9 +34,9 @@ python -m http.server 8753
 - **スマホ対応**（レスポンシブUI：ツールバー折り返し・断面パネル下部配置・タッチ操作・高DPR描画負荷の抑制）
 
 ## 技術構成
-- **occt-import-js**（OpenCASCADE の WASM 版）: STEP → メッシュ変換
-- **three.js**: 3Dレンダリング + OrbitControls
-- ロジックは `app.js` に集約し、index.html / standalone.html で共有
+- **occt-import-js**（OpenCASCADE の WASM 版）: STEP / IGES → メッシュ変換
+- **three.js**: 3Dレンダリング + OrbitControls、STL は STLLoader で読み込み
+- ロジックは `app.js` に集約し、index.html / standalone.html で共有（依存は引数注入：THREE / OrbitControls / STLLoader / getOcct）
 
 ## ビルド（standalone.html の再生成）
 `app.js` や `index.html` を変更したら再ビルドする。

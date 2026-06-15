@@ -5,7 +5,7 @@
 //   OrbitControls  : OrbitControls クラス
 //   getOcct        : async () => occt インスタンス（WASM初期化済み）
 
-export function createViewer({ THREE, OrbitControls, getOcct }) {
+export function createViewer({ THREE, OrbitControls, getOcct, STLLoader }) {
   const wrap = document.getElementById('canvas-wrap');
   const statusEl = document.getElementById('status');
   const spinner = document.getElementById('spinner');
@@ -103,78 +103,103 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
     renderer.setSize(wrap.clientWidth, wrap.clientHeight);
   });
 
-  // --- STEP読み込み ---
-  async function loadStepBuffer(arrayBuffer, name) {
+  // --- 読み込み（STEP / IGES = OpenCASCADE、STL = three.js）---
+  function clearModel() {
+    if (modelGroup) { scene.remove(modelGroup); disposeGroup(modelGroup); }
+    if (edgeGroup) { scene.remove(edgeGroup); disposeGroup(edgeGroup); }
+    if (stencilGroup) { scene.remove(stencilGroup); disposeGroup(stencilGroup); }
+    if (capMesh) { scene.remove(capMesh); capMesh.geometry.dispose(); capMesh.material.dispose(); capMesh = null; }
+  }
+
+  // OCCT の結果(meshes) を three の {geometry, color} 配列へ
+  function occtToGeometries(result) {
+    return result.meshes.map(mesh => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(mesh.attributes.position.array, 3));
+      if (mesh.attributes.normal) geometry.setAttribute('normal', new THREE.Float32BufferAttribute(mesh.attributes.normal.array, 3));
+      if (mesh.index) geometry.setIndex(new THREE.Uint32BufferAttribute(mesh.index.array, 1));
+      if (!mesh.attributes.normal) geometry.computeVertexNormals();
+      let color = 0xb0b6bd;
+      if (mesh.color) color = new THREE.Color(mesh.color[0], mesh.color[1], mesh.color[2]).getHex();
+      return { geometry, color };
+    });
+  }
+
+  // STL（ASCII/バイナリ両対応）を {geometry, color} へ
+  function stlToGeometries(arrayBuffer) {
+    if (!STLLoader) throw new Error('STLLoaderが利用できません');
+    const geometry = new STLLoader().parse(arrayBuffer);
+    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    return [{ geometry, color: 0xb0b6bd }];
+  }
+
+  // 形状配列からシーンを構築（メッシュ・エッジ・断面キャップ・フィット）
+  function buildScene(geometries, name) {
+    clearModel();
+    modelGroup = new THREE.Group();
+    edgeGroup = new THREE.Group();
+    stencilGroup = new THREE.Group();
+
+    let triCount = 0;
+    for (const { geometry, color } of geometries) {
+      triCount += (geometry.index ? geometry.index.count : geometry.attributes.position.count) / 3;
+      const material = new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.6, side: THREE.DoubleSide, flatShading: false, clippingPlanes: [], clipShadows: true });
+      modelGroup.add(new THREE.Mesh(geometry, material));
+      const edges = new THREE.EdgesGeometry(geometry, 30);
+      edgeGroup.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x2a2d33, clippingPlanes: [] })));
+    }
+
+    scene.add(modelGroup);
+    scene.add(edgeGroup);
+    edgeGroup.visible = showEdges;
+    bbox = new THREE.Box3().setFromObject(modelGroup);
+
+    // 断面キャップ: 各ソリッドのステンシル書き込み群 + 切断面を塗るキャップ平面
+    let ro = 1;
+    modelGroup.traverse(o => { if (o.isMesh) { stencilGroup.add(createPlaneStencilGroup(o.geometry, clipPlane, ro++)); } });
+    scene.add(stencilGroup);
+
+    const sphere = bbox.getBoundingSphere(new THREE.Sphere());
+    const capSize = sphere.radius * 2.5;
+    const capMat = new THREE.MeshStandardMaterial({
+      color: 0x7d8893, metalness: 0.1, roughness: 0.8, side: THREE.DoubleSide,
+      stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc,
+      stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp,
+    });
+    capMesh = new THREE.Mesh(new THREE.PlaneGeometry(capSize, capSize), capMat);
+    capMesh.renderOrder = 10;
+    capMesh.onAfterRender = (r) => r.clearStencil();
+    scene.add(capMesh);
+
+    applyWire();
+    applySection();
+    fitView();
+    dropzone.classList.add('hidden');
+    filenameEl.textContent = name;
+    return { solidCount: geometries.length, triCount: Math.round(triCount) };
+  }
+
+  async function loadFromBuffer(arrayBuffer, name) {
+    const ext = name.toLowerCase().split('.').pop();
     try {
-      showSpinner(true, 'CADエンジン初期化中...');
-      const occt = await getOcct();
-      showSpinner(true, 'STEP解析中...');
-
-      const fileBuffer = new Uint8Array(arrayBuffer);
-      const result = occt.ReadStepFile(fileBuffer, null);
-      if (!result || !result.success) throw new Error('STEPの解析に失敗しました');
-
-      if (modelGroup) { scene.remove(modelGroup); disposeGroup(modelGroup); }
-      if (edgeGroup) { scene.remove(edgeGroup); disposeGroup(edgeGroup); }
-      if (stencilGroup) { scene.remove(stencilGroup); disposeGroup(stencilGroup); }
-      if (capMesh) { scene.remove(capMesh); capMesh.geometry.dispose(); capMesh.material.dispose(); capMesh = null; }
-      modelGroup = new THREE.Group();
-      edgeGroup = new THREE.Group();
-      stencilGroup = new THREE.Group();
-
-      let triCount = 0;
-      for (const mesh of result.meshes) {
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(mesh.attributes.position.array, 3));
-        if (mesh.attributes.normal) {
-          geometry.setAttribute('normal', new THREE.Float32BufferAttribute(mesh.attributes.normal.array, 3));
-        }
-        const index = mesh.index ? mesh.index.array : null;
-        if (index) geometry.setIndex(new THREE.Uint32BufferAttribute(index, 1));
-        if (!mesh.attributes.normal) geometry.computeVertexNormals();
-        triCount += (index ? index.length : geometry.attributes.position.count) / 3;
-
-        let color = 0xb0b6bd;
-        if (mesh.color) color = new THREE.Color(mesh.color[0], mesh.color[1], mesh.color[2]).getHex();
-        const material = new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.6, side: THREE.DoubleSide, flatShading: false, clippingPlanes: [], clipShadows: true });
-        const obj = new THREE.Mesh(geometry, material);
-        modelGroup.add(obj);
-
-        const edges = new THREE.EdgesGeometry(geometry, 30);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x2a2d33, clippingPlanes: [] }));
-        edgeGroup.add(line);
+      let geometries;
+      if (ext === 'stl') {
+        showSpinner(true, 'STL解析中...');
+        geometries = stlToGeometries(arrayBuffer);
+      } else {
+        showSpinner(true, 'CADエンジン初期化中...');
+        const occt = await getOcct();
+        const isIges = (ext === 'iges' || ext === 'igs');
+        showSpinner(true, (isIges ? 'IGES' : 'STEP') + '解析中...');
+        const buf = new Uint8Array(arrayBuffer);
+        const result = isIges ? occt.ReadIgesFile(buf, null) : occt.ReadStepFile(buf, null);
+        if (!result || !result.success) throw new Error((isIges ? 'IGES' : 'STEP') + 'の解析に失敗しました');
+        geometries = occtToGeometries(result);
       }
-
-      scene.add(modelGroup);
-      scene.add(edgeGroup);
-      edgeGroup.visible = showEdges;
-      bbox = new THREE.Box3().setFromObject(modelGroup);
-
-      // 断面キャップ: 各ソリッドのステンシル書き込み群 + 切断面を塗るキャップ平面
-      let ro = 1;
-      modelGroup.traverse(o => { if (o.isMesh) { stencilGroup.add(createPlaneStencilGroup(o.geometry, clipPlane, ro++)); } });
-      scene.add(stencilGroup);
-
-      const sphere = bbox.getBoundingSphere(new THREE.Sphere());
-      const capSize = sphere.radius * 2.5;
-      const capMat = new THREE.MeshStandardMaterial({
-        color: 0x7d8893, metalness: 0.1, roughness: 0.8, side: THREE.DoubleSide,
-        stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc,
-        stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp,
-      });
-      capMesh = new THREE.Mesh(new THREE.PlaneGeometry(capSize, capSize), capMat);
-      capMesh.renderOrder = 10;
-      capMesh.onAfterRender = (r) => r.clearStencil();
-      scene.add(capMesh);
-
-      applyWire();
-      applySection();
-
-      fitView();
-      dropzone.classList.add('hidden');
-      filenameEl.textContent = name;
+      if (!geometries.length) throw new Error('表示できる形状が見つかりませんでした');
+      const { solidCount, triCount } = buildScene(geometries, name);
       showSpinner(false);
-      setStatus(`${name} ・ ${result.meshes.length} ソリッド ・ ${Math.round(triCount).toLocaleString()} 三角形`);
+      setStatus(`${name} ・ ${solidCount} ソリッド ・ ${triCount.toLocaleString()} 三角形`);
     } catch (e) {
       showSpinner(false);
       setStatus('エラー: ' + e.message);
@@ -233,11 +258,12 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
   }
 
   // --- ファイル受け取り ---
+  const SUPPORTED_EXT = ['step', 'stp', 'iges', 'igs', 'stl'];
   async function handleFile(file) {
     const ext = file.name.toLowerCase().split('.').pop();
-    if (ext !== 'step' && ext !== 'stp') { alert('STEPファイル（.step / .stp）を指定してください'); return; }
+    if (!SUPPORTED_EXT.includes(ext)) { alert('対応形式: STEP(.step/.stp) / IGES(.iges/.igs) / STL(.stl)'); return; }
     const buf = await file.arrayBuffer();
-    await loadStepBuffer(buf, file.name);
+    await loadFromBuffer(buf, file.name);
   }
 
   const fileInput = document.getElementById('file-input');
@@ -253,8 +279,8 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
   if (isTouch) {
     const msg = dropzone.querySelector('.msg');
     const sub = dropzone.querySelector('.sub');
-    if (msg) msg.textContent = 'タップしてSTEPファイルを開く';
-    if (sub) sub.textContent = '.step / .stp に対応 ・ 端末内で処理（アップロードなし）';
+    if (msg) msg.textContent = 'タップしてファイルを開く';
+    if (sub) sub.textContent = 'STEP / IGES / STL に対応 ・ 端末内で処理（アップロードなし）';
     fileInput.removeAttribute('accept');  // iOS等で .step が選べない問題を回避
   }
 

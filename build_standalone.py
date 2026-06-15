@@ -16,12 +16,13 @@ VENDOR = ROOT / "vendor"
 index_html = (ROOT / "index.html").read_text(encoding="utf-8")
 three_js = (VENDOR / "three.module.js").read_text(encoding="utf-8")
 orbit_js = (VENDOR / "OrbitControls.js").read_text(encoding="utf-8")
+stl_js = (VENDOR / "STLLoader.js").read_text(encoding="utf-8")
 occt_js = (VENDOR / "occt-import-js.js").read_text(encoding="utf-8")
 app_js = (ROOT / "app.js").read_text(encoding="utf-8")
 wasm_b64 = base64.b64encode((VENDOR / "occt-import-js.wasm").read_bytes()).decode("ascii")
 
 # 念のため埋め込み破壊シーケンスを検査
-for name, text in [("three", three_js), ("orbit", orbit_js), ("occt", occt_js), ("app", app_js)]:
+for name, text in [("three", three_js), ("orbit", orbit_js), ("stl", stl_js), ("occt", occt_js), ("app", app_js)]:
     if "</script" in text.lower():
         raise SystemExit(f"[NG] {name} に </script が含まれ text/plain 埋め込みできません")
 
@@ -44,6 +45,9 @@ inline = f"""
 <script type="text/plain" id="src-orbit">
 {orbit_js}
 </script>
+<script type="text/plain" id="src-stl">
+{stl_js}
+</script>
 <script type="text/plain" id="src-app">
 {app_js}
 </script>
@@ -59,10 +63,10 @@ function blobUrl(text) {{ return URL.createObjectURL(new Blob([text], {{ type: '
 const threeUrl = blobUrl(document.getElementById('src-three').textContent);
 const THREE = await import(threeUrl);
 
-// OrbitControls は 'three' を import しているので blob URL に差し替える
-let orbitText = document.getElementById('src-orbit').textContent;
-orbitText = orbitText.replace(/from\\s+['"]three['"]/g, `from '${{threeUrl}}'`);
-const {{ OrbitControls }} = await import(blobUrl(orbitText));
+// OrbitControls / STLLoader は 'three' を import しているので blob URL に差し替える
+const fixThree = (text) => text.replace(/from\\s+['"]three['"]/g, `from '${{threeUrl}}'`);
+const {{ OrbitControls }} = await import(blobUrl(fixThree(document.getElementById('src-orbit').textContent)));
+const {{ STLLoader }} = await import(blobUrl(fixThree(document.getElementById('src-stl').textContent)));
 
 // 本体ロジック
 const {{ createViewer }} = await import(blobUrl(document.getElementById('src-app').textContent));
@@ -77,7 +81,7 @@ async function getOcct() {{
   return occt;
 }}
 
-createViewer({{ THREE, OrbitControls, getOcct }});
+createViewer({{ THREE, OrbitControls, getOcct, STLLoader }});
 </script>
 </body>
 </html>

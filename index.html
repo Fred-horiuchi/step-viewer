@@ -96,7 +96,7 @@
     <button class="tool" id="btn-wire">ワイヤー</button>
     <button class="tool" id="btn-edges">エッジ</button>
     <button class="tool" id="btn-fit">フィット</button>
-    <label class="openbtn">ファイルを開く<input type="file" id="file-input" accept=".step,.stp,.STEP,.STP" /></label>
+    <label class="openbtn">ファイルを開く<input type="file" id="file-input" accept=".step,.stp,.iges,.igs,.stl,.STEP,.STP,.IGES,.IGS,.STL" /></label>
   </div>
 
   <div id="canvas-wrap"></div>
@@ -115,8 +115,8 @@
 
   <div id="dropzone">
     <div class="icon">📦</div>
-    <div class="msg">STEPファイルをここにドラッグ&ドロップ</div>
-    <div class="sub">.step / .stp に対応 ・ ブラウザ内で処理（アップロードなし）</div>
+    <div class="msg">CADファイルをここにドラッグ&ドロップ</div>
+    <div class="sub">STEP / IGES / STL に対応 ・ ブラウザ内で処理（アップロードなし）</div>
   </div>
 
   <div id="spinner"><div class="ring"></div><div id="spinner-msg">読み込み中...</div></div>
@@ -137,6 +137,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { STLLoader } from './vendor/STLLoader.js';
 import { createViewer } from './app.js';
 
 // occt の wasm も同一オリジンから取得
@@ -149,7 +150,7 @@ async function getOcct() {
   return occt;
 }
 
-createViewer({ THREE, OrbitControls, getOcct });
+createViewer({ THREE, OrbitControls, getOcct, STLLoader });
 </script>
 </body>
 </html>
