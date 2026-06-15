@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<style>
+  @page { size: A4 portrait; margin: 12mm 12mm 10mm 12mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Yu Gothic UI", "Yu Gothic", "Meiryo", sans-serif; color: #1c2430; font-size: 10.5pt; line-height: 1.5; }
+
+  .head { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 2.5px solid #2f6cb3; padding-bottom: 6px; }
+  .head .t { font-size: 18pt; font-weight: 700; letter-spacing: 0.5px; }
+  .head .t small { display: block; font-size: 9.5pt; font-weight: 400; color: #5a6675; letter-spacing: 0; margin-top: 2px; }
+  .head .url { text-align: right; }
+  .head .url .lbl { font-size: 8pt; color: #5a6675; }
+  .head .url a { display: inline-block; font-size: 12pt; font-weight: 700; color: #2f6cb3; text-decoration: none; }
+
+  .lead { margin: 10px 0 12px; padding: 8px 12px; background: #eef3f9; border-left: 3px solid #2f6cb3; border-radius: 2px; font-size: 10pt; }
+
+  .shots { display: flex; gap: 10px; margin-bottom: 14px; }
+  .shots figure { flex: 1; }
+  .shots img { width: 100%; border: 1px solid #c9d2dd; border-radius: 4px; display: block; }
+  .shots figcaption { font-size: 8.5pt; color: #5a6675; margin-top: 3px; text-align: center; }
+
+  h2 { font-size: 11.5pt; color: #2f6cb3; border-bottom: 1px solid #dde4ec; padding-bottom: 3px; margin-bottom: 8px; }
+
+  .steps { list-style: none; counter-reset: s; }
+  .steps > li { position: relative; padding: 0 0 9px 30px; counter-increment: s; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 21px; height: 21px; background: #2f6cb3; color: #fff; border-radius: 50%; font-size: 10pt; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .steps b { color: #1c2430; }
+  .key { display: inline-block; padding: 0 6px; background: #2b3038; color: #fff; border-radius: 4px; font-size: 9pt; line-height: 1.7; }
+  .note { color: #5a6675; font-size: 9pt; }
+
+  .info { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; font-size: 9.5pt; }
+  .info div { padding: 3px 0; border-bottom: 1px dotted #d4dbe3; }
+  .info span { color: #5a6675; display: inline-block; width: 96px; }
+
+  .foot { margin-top: 12px; padding-top: 6px; border-top: 1px solid #dde4ec; font-size: 8.5pt; color: #7a8493; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="t">STEP Web ビューア 操作手順<small>ブラウザで STEP（3D CAD）データを開いて確認できる社内ツール</small></div>
+    <div class="url">
+      <div class="lbl">アクセス先</div>
+      <a href="https://final-step-viewer.pages.dev/">final-step-viewer.pages.dev</a>
+    </div>
+  </div>
+
+  <div class="lead">
+    STEPファイル（.step / .stp）をドラッグ&ドロップするだけで、その場で3D表示・断面確認ができます。
+    <b>インストール不要</b>、PC・Mac・スマートフォンのブラウザで動作します。ファイルはご自身のブラウザ内だけで処理され、<b>外部へは一切送信されません</b>。
+  </div>
+
+  <div class="shots">
+    <figure><img src="img/doc-normal.png" alt="通常表示" /><figcaption>▲ 通常表示（回転・拡大して全体を確認）</figcaption></figure>
+    <figure><img src="img/doc-section.png" alt="断面表示" /><figcaption>▲ 断面表示（内部構造を切断面で確認）</figcaption></figure>
+  </div>
+
+  <h2>基本操作</h2>
+  <ol class="steps">
+    <li><b>ファイルを開く</b>　上記URLにアクセスし、STEPファイルを画面に<b>ドラッグ&ドロップ</b>します（右上の「ファイルを開く」からでも可。スマートフォンは画面を<b>タップ</b>して選択）。</li>
+    <li><b>視点を動かす</b>　<span class="key">回転</span> 左ドラッグ　<span class="key">移動</span> 右ドラッグ　<span class="key">拡大縮小</span> マウスホイール　<span class="note">（スマホ：1本指で回転／2本指で移動／ピンチで拡大縮小）</span></li>
+    <li><b>表示を切り替える</b>　<span class="key">フィット</span> 全体が収まる視点へ　<span class="key">エッジ</span> 稜線の表示切替　<span class="key">ワイヤー</span> ワイヤーフレーム表示。</li>
+    <li><b>断面で内部を見る</b>　<span class="key">断面</span> を押すと操作パネルが開きます。<b>軸（X / Y / Z）</b>を選び、<b>位置スライダー</b>で切る場所を調整、<b>向きを反転</b>で切る側を入れ替えます。切断面は中実に塗りつぶして表示されます。</li>
+  </ol>
+
+  <h2>補足・仕様</h2>
+  <div class="info">
+    <div><span>対応形式</span>STEP（.step / .stp）</div>
+    <div><span>対応ブラウザ</span>Chrome / Edge / Safari / Firefox</div>
+    <div><span>対応端末</span>Windows / Mac / iPad・スマホ</div>
+    <div><span>データの扱い</span>ブラウザ内処理・外部送信なし</div>
+    <div><span>ブックマーク</span>推奨（Windows: Ctrl+D／Mac: ⌘+D）</div>
+    <div><span>オフライン版</span>standalone.html を配布（ダブルクリックで起動）</div>
+  </div>
+
+  <div class="foot">
+    <span>STEP Web ビューア 操作手順　2026年6月</span>
+    <span>お問い合わせ：堀内</span>
+  </div>
+</body>
+</html>
