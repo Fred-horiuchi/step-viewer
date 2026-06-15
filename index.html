@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>STEP Viewer</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📦</text></svg>" />
 <style>
   :root { color-scheme: dark; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; background: #1e2126; color: #e6e6e6; }
-  #app { position: relative; width: 100vw; height: 100vh; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; background: #1e2126; color: #e6e6e6; -webkit-text-size-adjust: 100%; }
+  #app { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
   #canvas-wrap { width: 100%; height: 100%; }
-  canvas { display: block; }
+  canvas { display: block; touch-action: none; }   /* タッチで回転/ズーム、ページスクロールを抑止 */
 
   /* ヘッダー */
   #topbar { position: absolute; top: 0; left: 0; right: 0; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: rgba(20,22,26,0.85); backdrop-filter: blur(8px); border-bottom: 1px solid #333; z-index: 10; }
@@ -38,7 +38,7 @@
   #section-panel .flipbtn:hover { background: #353c46; }
 
   /* ドロップゾーン / 初期表示 */
-  #dropzone { position: absolute; inset: 48px 0 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; pointer-events: none; z-index: 5; transition: background 0.15s; }
+  #dropzone { position: absolute; inset: 48px 0 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; pointer-events: auto; cursor: pointer; z-index: 5; transition: background 0.15s; padding: 24px; text-align: center; }
   #dropzone.dragover { background: rgba(59,110,165,0.18); border: 2px dashed #4a82c4; }
   #dropzone .icon { font-size: 56px; opacity: 0.5; }
   #dropzone .msg { font-size: 16px; color: #9aa0a6; }
@@ -51,6 +51,39 @@
   #spinner.show { display: flex; }
   .ring { width: 44px; height: 44px; border: 4px solid #3a4049; border-top-color: #4a82c4; border-radius: 50%; animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== スマホ / タッチ端末向け ===== */
+  @media (max-width: 680px) {
+    /* ツールバーは折り返し可・タップ領域を拡大 */
+    #topbar { height: auto; min-height: 52px; flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+    #topbar .title { font-size: 14px; }
+    #topbar .filename { display: none; }            /* ファイル名は下部ステータスに表示済み */
+    #topbar .spacer { display: none; }
+    button.tool, label.openbtn { padding: 9px 12px; font-size: 13px; flex: 1 1 auto; text-align: center; min-height: 40px; }
+    label.openbtn { flex-basis: 100%; order: -1; }  /* 「開く」を先頭・全幅で押しやすく */
+
+    /* 断面パネルは画面下部に全幅で配置（ツールバーと重ならない） */
+    #section-panel { top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); left: 10px; right: 10px; width: auto; padding: 12px; }
+    #section-panel .row { margin-bottom: 12px; }
+    #section-panel .axisbtns button { padding: 10px 0; font-size: 14px; }
+    #section-panel input[type=range] { height: 28px; }
+    #section-panel .flipbtn { padding: 10px 0; font-size: 14px; }
+
+    /* ステータスは下部中央、断面パネルと干渉しないよう控えめに */
+    #status { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); font-size: 11px; text-align: center; }
+    /* 断面パネル展開中はステータスを隠して重なりを回避 */
+    #section-panel.show ~ #status { display: none; }
+
+    #dropzone .icon { font-size: 48px; }
+    #dropzone .msg { font-size: 15px; }
+  }
+
+  /* タッチ端末ではホバー由来のチラつきを抑止 */
+  @media (hover: none) {
+    button.tool:hover { background: #2b3038; }
+    button.tool.active:hover { background: #3b6ea5; }
+    label.openbtn:hover { background: #3b6ea5; }
+  }
 </style>
 </head>
 <body>
@@ -60,7 +93,7 @@
     <span class="filename" id="filename"></span>
     <span class="spacer"></span>
     <button class="tool" id="btn-section">断面</button>
-    <button class="tool" id="btn-wire">ワイヤーフレーム</button>
+    <button class="tool" id="btn-wire">ワイヤー</button>
     <button class="tool" id="btn-edges">エッジ</button>
     <button class="tool" id="btn-fit">フィット</button>
     <label class="openbtn">ファイルを開く<input type="file" id="file-input" accept=".step,.stp,.STEP,.STP" /></label>

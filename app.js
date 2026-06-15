@@ -24,7 +24,7 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
   camera.position.set(100, 100, 100);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });  // r163+ は既定で stencil 無効
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));  // 高DPRスマホの描画負荷を抑制
   renderer.setSize(wrap.clientWidth, wrap.clientHeight);
   renderer.localClippingEnabled = true;   // 断面表示に必要
   wrap.appendChild(renderer.domElement);
@@ -240,9 +240,23 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
     await loadStepBuffer(buf, file.name);
   }
 
-  document.getElementById('file-input').addEventListener('change', (e) => {
+  const fileInput = document.getElementById('file-input');
+  fileInput.addEventListener('change', (e) => {
     if (e.target.files.length) handleFile(e.target.files[0]);
+    e.target.value = '';   // 同じファイルを連続で選べるようにリセット
   });
+  // ドロップゾーンのタップ/クリックでもファイル選択を開く（スマホ向け）
+  dropzone.addEventListener('click', () => fileInput.click());
+
+  // タッチ端末向けの文言・選択制限の調整
+  const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if (isTouch) {
+    const msg = dropzone.querySelector('.msg');
+    const sub = dropzone.querySelector('.sub');
+    if (msg) msg.textContent = 'タップしてSTEPファイルを開く';
+    if (sub) sub.textContent = '.step / .stp に対応 ・ 端末内で処理（アップロードなし）';
+    fileInput.removeAttribute('accept');  // iOS等で .step が選べない問題を回避
+  }
 
   ['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, (e) => {
     e.preventDefault(); dropzone.classList.remove('hidden'); dropzone.classList.add('dragover');
@@ -293,5 +307,5 @@ export function createViewer({ THREE, OrbitControls, getOcct }) {
     applySection();
   });
 
-  setStatus('STEPファイルをドラッグ&ドロップ、または「ファイルを開く」');
+  setStatus(isTouch ? 'STEPファイルをタップして開く' : 'STEPファイルをドラッグ&ドロップ、または「ファイルを開く」');
 }
