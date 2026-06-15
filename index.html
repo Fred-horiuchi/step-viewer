@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>STEP Viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; background: #1e2126; color: #e6e6e6; }
+  #app { position: relative; width: 100vw; height: 100vh; }
+  #canvas-wrap { width: 100%; height: 100%; }
+  canvas { display: block; }
+
+  /* ヘッダー */
+  #topbar { position: absolute; top: 0; left: 0; right: 0; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: rgba(20,22,26,0.85); backdrop-filter: blur(8px); border-bottom: 1px solid #333; z-index: 10; }
+  #topbar .title { font-weight: 600; font-size: 15px; letter-spacing: 0.5px; }
+  #topbar .filename { font-size: 13px; color: #9aa0a6; max-width: 32vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #topbar .spacer { flex: 1; }
+  button.tool { background: #2b3038; color: #e6e6e6; border: 1px solid #3a4049; border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button.tool:hover { background: #353c46; }
+  button.tool.active { background: #3b6ea5; border-color: #4a82c4; }
+  label.openbtn { background: #3b6ea5; color: #fff; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  label.openbtn:hover { background: #4a82c4; }
+  input[type=file] { display: none; }
+
+  /* 断面パネル */
+  #section-panel { position: absolute; top: 56px; right: 16px; width: 230px; background: rgba(28,31,37,0.95); border: 1px solid #3a4049; border-radius: 8px; padding: 14px; z-index: 10; display: none; }
+  #section-panel.show { display: block; }
+  #section-panel .row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  #section-panel .label { font-size: 12px; color: #9aa0a6; width: 38px; }
+  #section-panel .axisbtns { display: flex; gap: 6px; }
+  #section-panel .axisbtns button { flex: 1; padding: 5px 0; font-size: 12px; background: #2b3038; color: #e6e6e6; border: 1px solid #3a4049; border-radius: 5px; cursor: pointer; }
+  #section-panel .axisbtns button.active { background: #3b6ea5; border-color: #4a82c4; }
+  #section-panel input[type=range] { width: 100%; accent-color: #4a82c4; }
+  #section-panel .flipbtn { width: 100%; padding: 6px 0; font-size: 12px; background: #2b3038; color: #e6e6e6; border: 1px solid #3a4049; border-radius: 5px; cursor: pointer; }
+  #section-panel .flipbtn:hover { background: #353c46; }
+
+  /* ドロップゾーン / 初期表示 */
+  #dropzone { position: absolute; inset: 48px 0 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; pointer-events: none; z-index: 5; transition: background 0.15s; }
+  #dropzone.dragover { background: rgba(59,110,165,0.18); border: 2px dashed #4a82c4; }
+  #dropzone .icon { font-size: 56px; opacity: 0.5; }
+  #dropzone .msg { font-size: 16px; color: #9aa0a6; }
+  #dropzone .sub { font-size: 13px; color: #6b7178; }
+  #dropzone.hidden { display: none; }
+
+  /* ステータス / スピナー */
+  #status { position: absolute; bottom: 16px; left: 16px; font-size: 12px; color: #9aa0a6; background: rgba(20,22,26,0.8); padding: 6px 12px; border-radius: 6px; z-index: 10; }
+  #spinner { position: absolute; inset: 48px 0 0 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px; z-index: 8; background: rgba(20,22,26,0.6); }
+  #spinner.show { display: flex; }
+  .ring { width: 44px; height: 44px; border: 4px solid #3a4049; border-top-color: #4a82c4; border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <span class="title">STEP Viewer</span>
+    <span class="filename" id="filename"></span>
+    <span class="spacer"></span>
+    <button class="tool" id="btn-section">断面</button>
+    <button class="tool" id="btn-wire">ワイヤーフレーム</button>
+    <button class="tool" id="btn-edges">エッジ</button>
+    <button class="tool" id="btn-fit">フィット</button>
+    <label class="openbtn">ファイルを開く<input type="file" id="file-input" accept=".step,.stp,.STEP,.STP" /></label>
+  </div>
+
+  <div id="canvas-wrap"></div>
+
+  <div id="section-panel">
+    <div class="row"><span class="label">軸</span>
+      <div class="axisbtns">
+        <button data-axis="0" class="active">X</button>
+        <button data-axis="1">Y</button>
+        <button data-axis="2">Z</button>
+      </div>
+    </div>
+    <div class="row"><span class="label">位置</span><input type="range" id="sec-pos" min="0" max="1000" value="500" /></div>
+    <button class="flipbtn" id="sec-flip">向きを反転</button>
+  </div>
+
+  <div id="dropzone">
+    <div class="icon">📦</div>
+    <div class="msg">STEPファイルをここにドラッグ&ドロップ</div>
+    <div class="sub">.step / .stp に対応 ・ ブラウザ内で処理（アップロードなし）</div>
+  </div>
+
+  <div id="spinner"><div class="ring"></div><div id="spinner-msg">読み込み中...</div></div>
+  <div id="status">準備完了</div>
+</div>
+
+<!-- occt-import-js (OpenCASCADE WASM): STEP → メッシュ変換。すべて同一オリジン(./vendor)から配信 -->
+<script src="./vendor/occt-import-js.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/OrbitControls.js';
+import { createViewer } from './app.js';
+
+// occt の wasm も同一オリジンから取得
+let occt = null;
+async function getOcct() {
+  if (occt) return occt;
+  occt = await occtimportjs({
+    locateFile: (name) => `./vendor/${name}`
+  });
+  return occt;
+}
+
+createViewer({ THREE, OrbitControls, getOcct });
+</script>
+</body>
+</html>
