@@ -1,3 +1,5 @@
 .playwright-mcp/
 *.log
 *-test.png
+dist/
+.wrangler/
